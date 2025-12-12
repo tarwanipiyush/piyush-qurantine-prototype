@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Quarantine Center — Prototype</title>
+<style>
+:root{--bg:#f6fbff;--card:#fff;--blue:#0b63d6;--muted:#6b7280;--danger:#d9534f;}
+body{font-family:Inter,Segoe UI,Arial;background:var(--bg);padding:20px;color:#07304a}
+.header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+.h1{font-size:20px;font-weight:700;color:var(--blue)}
+.card{background:var(--card);border-radius:12px;padding:14px;box-shadow:0 6px 18px rgba(11,99,214,0.06);}
+.grid{display:grid;grid-template-columns:320px 1fr;gap:16px}
+.pat-list{height:720px;overflow:auto}
+.patient{display:flex;align-items:center;justify-content:space-between;padding:8px;border-radius:8px;margin-bottom:6px;border:1px solid #eef3fb}
+.patient .meta{display:flex;gap:8px;align-items:center}
+.status{width:12px;height:12px;border-radius:50%}
+.controls{display:flex;gap:8px;align-items:center}
+.btn{background:var(--blue);color:#fff;border:none;padding:8px 10px;border-radius:8px;cursor:pointer}
+.btn.secondary{background:#e6f0ff;color:var(--blue);border:1px solid #cfe3ff}
+.small{font-size:13px;color:var(--muted)}
+.form-row{display:flex;gap:8px;align-items:center;margin-top:8px}
+.input{padding:8px;border-radius:8px;border:1px solid #e6eefb;width:120px}
+.log{max-height:200px;overflow:auto;margin-top:8px;border-radius:8px;padding:8px;border:1px dashed #e6eefb;background:#fbfeff}
+.alert{padding:8px;border-radius:8px;background:#fff4f4;border:1px solid #ffdede;color:var(--danger);margin-top:8px}
+.stats{display:flex;gap:12px}
+.stat{background:linear-gradient(90deg,#fff,#f8fbff);padding:10px;border-radius:8px;min-width:140px;text-align:center}
+.footer{margin-top:12px;font-size:13px;color:var(--muted)}
+.tag{padding:4px 8px;border-radius:999px;background:#eef6ff;color:var(--blue);font-weight:600;}
+</style>
+</head>
+<body>
+<div class="header">
+  <div>
+    <div class="h1">Quarantine Center — Nurse/Doctor App</div>
+    <div class="small">Capacity: <span id="capacity">74</span> beds — Full occupancy</div>
+  </div>
+  <div class="card" style="padding:8px;">
+    <div class="small">Logged in as</div>
+    <div style="font-weight:700">Nurse: Unit A</div>
+  </div>
+</div>
+
+<div class="grid">
+  <div class="card pat-list" id="leftCol">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <div style="font-weight:700">Patients</div>
+      <div class="small">Total: <span id="totalPatients">0</span></div>
+    </div>
+    <div id="patientsContainer"></div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div style="font-weight:700">Patient Details</div>
+      <div class="small"><span class="tag" id="selectedId">Select a patient</span></div>
+    </div>
+
+    <div id="patientArea" style="margin-top:12px">
+      <div id="noSelect" class="small">Select a patient on the left to view and record vitals.</div>
+
+      <div id="detailUI" style="display:none">
+        <div style="display:flex;gap:16px;align-items:center">
+          <div style="min-width:180px">
+            <div id="pName" style="font-weight:700;font-size:18px"></div>
+            <div class="small" id="pMeta"></div>
+          </div>
+          <div class="stats">
+            <div class="stat"><div class="small">Latest Temp</div><div id="latestTemp" style="font-weight:700">—</div></div>
+            <div class="stat"><div class="small">Consecutive Fever-free Days</div><div id="feverFree" style="font-weight:700">0</div></div>
+            <div class="stat"><div class="small">Doctor visited today</div><div id="docVisit" style="font-weight:700">No</div></div>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <input class="input" id="tempInput" placeholder="Temp °F"/>
+          <button class="btn" id="saveTemp">Save Temp</button>
+          <button class="btn secondary" id="markVisited">Mark Doctor Visit</button>
+        </div>
+
+        <div class="form-row">
+          <input class="input" id="noteInput" placeholder="Add observation note"/>
+          <button class="btn secondary" id="addNote">Add Note</button>
+        </div>
+
+        <div id="alertsArea"></div>
+
+        <div style="margin-top:12px">
+          <div style="font-weight:700">Vitals Log</div>
+          <div id="vitalsLog" class="log"></div>
+        </div>
+
+        <div style="margin-top:12px">
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn" id="attemptDischarge">Attempt Discharge</button>
+            <div class="small" id="dischargeResult"></div>
+          </div>
+          <div class="small" style="margin-top:6px">Doctor discharges must be based only on 3 full days without fever.</div>
+        </div>
+
+      </div>
+    </div>
+
+    <div style="margin-top:12px" class="footer card">
+      <div style="font-weight:700">Centre Performance</div>
+      <div style="display:flex;gap:12px;margin-top:8px">
+        <div class="small">Mortality target: 15% (expected)</div>
+        <div class="small">Current mortality: <span id="mortality">0%</span></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// Seed patients (74 full occupancy)
+const patients = [];
+const today = new Date().toISOString().slice(0,10);
+for(let i=1;i<=74;i++){
+  const id = "P"+String(i).padStart(3,"0");
+  // Each patient has vitals history: array of {date, temp, nurse, note}, doctorVisits by date
+  patients.push({id, name:"Patient "+i, age: 30 + (i%30), room:i, vitals:[], doctorVisits:[], discharged:false, death:false});
+}
+// expose to window
+window.patients = patients;
+
+const patientsContainer = document.getElementById('patientsContainer');
+const totalPatients = document.getElementById('totalPatients');
+totalPatients.innerText = patients.length;
+const capacity = document.getElementById('capacity');
+capacity.innerText = patients.length;
+
+function renderList(){
+  patientsContainer.innerHTML = "";
+  patients.forEach(p => {
+    const div = document.createElement('div');
+    div.className = 'patient';
+    div.innerHTML = `<div class="meta"><div style="width:44px;height:44px;border-radius:8px;background:#eef6ff;display:flex;align-items:center;justify-content:center;color:var(--blue);font-weight:700">${p.id}</div>
+      <div><div style="font-weight:700">${p.name}</div><div class="small">Room ${p.room} • Age ${p.age}</div></div></div>
+      <div class="controls"><div class="small">${computeStatusDot(p)}</div><button class="btn secondary" onclick="selectPatient('${p.id}')">Open</button></div>`;
+    patientsContainer.appendChild(div);
+  });
+}
+
+function computeStatusDot(p){
+  // compute latest temp to decide status
+  const latest = p.vitals.length? p.vitals[p.vitals.length-1].temp : null;
+  if(latest && latest>100.4) return '<div class="status" style="background:var(--danger)"></div>';
+  return '<div class="status" style="background:#39a866"></div>';
+}
+
+let selected = null;
+function selectPatient(id){
+  const p = patients.find(x=>x.id===id);
+  selected = p;
+  document.getElementById('selectedId').innerText = p.id;
+  document.getElementById('noSelect').style.display='none';
+  document.getElementById('detailUI').style.display='block';
+  document.getElementById('pName').innerText = p.name;
+  document.getElementById('pMeta').innerText = `Room ${p.room} • Age ${p.age}`;
+  refreshDetails();
+}
+
+function refreshDetails(){
+  if(!selected) return;
+  const latest = selected.vitals.length? selected.vitals[selected.vitals.length-1] : null;
+  document.getElementById('latestTemp').innerText = latest? `${latest.temp} °F (${latest.date})` : "—";
+  document.getElementById('feverFree').innerText = computeFeverFree(selected);
+  document.getElementById('docVisit').innerText = selected.docVisitedToday? "Yes":"No";
+  renderLog();
+  renderAlerts();
+  document.getElementById('dischargeResult').innerText = "";
+}
+
+function computeFeverFree(p){
+  // need 3 full days without fever. Check last entries by date. We'll compute consecutive days ending yesterday?
+  // For simplicity: count consecutive days (including today) with latest temp <=100.4. We require 3 full days w/o fever => last 3 days all <=100.4
+  // But "reported 3 full days without a fever" implies 3 calendar days with no fever readings.
+  const map = {};
+  p.vitals.forEach(v => { map[v.date]= Math.min(map[v.date]||999,v.temp) });
+  // get last 7 days
+  const todayStr = new Date().toISOString().slice(0,10);
+  let count=0;
+  for(let d=0; d<6; d++){
+    const dt = new Date(); dt.setDate(dt.getDate()-d);
+    const s = dt.toISOString().slice(0,10);
+    const t = map[s];
+    if(t===undefined) break; // no reading that day -> not fever-free
+    if(t>100.4) break;
+    count++;
+  }
+  return count;
+}
+
+function renderLog(){
+  const log = document.getElementById('vitalsLog');
+  log.innerHTML = "";
+  selected.vitals.slice().reverse().forEach(v=>{
+    const el = document.createElement('div');
+    el.innerHTML = `<div style="font-weight:700">${v.date} — ${v.temp} °F</div><div class="small">Nurse: ${v.nurse} ${v.note? '• Note: '+v.note : ''}</div>`;
+    log.appendChild(el);
+  });
+  // notes
+  if(selected.notes && selected.notes.length){
+    selected.notes.slice().reverse().forEach(n=>{
+      const el = document.createElement('div');
+      el.innerHTML = `<div style="font-weight:700">${n.date} — Note</div><div class="small">${n.text}</div>`;
+      log.appendChild(el);
+    });
+  }
+}
+
+function renderAlerts(){
+  const area = document.getElementById('alertsArea');
+  area.innerHTML = "";
+  const latest = selected.vitals.length? selected.vitals[selected.vitals.length-1] : null;
+  if(latest && latest.temp>100.4){
+    const a = document.createElement('div');
+    a.className='alert';
+    a.innerText = `ALERT: High temperature ${latest.temp} °F recorded today.`;
+    area.appendChild(a);
+  }
+  // doctor visited?
+  if(!selected.docVisitedToday){
+    const a2 = document.createElement('div');
+    a2.className='alert';
+    a2.style.background='#fffef4'; a2.style.border='1px solid #fff0b7'; a2.style.color='#b06a00';
+    a2.innerText = 'Warning: Patient has not yet been visited by a doctor today.';
+    area.appendChild(a2);
+  }
+}
+
+document.getElementById('saveTemp').addEventListener('click', ()=>{
+  if(!selected) return alert('Select a patient');
+  const val = parseFloat(document.getElementById('tempInput').value);
+  if(!val || isNaN(val)) return alert('Enter numeric temperature');
+  const date = new Date().toISOString().slice(0,10);
+  selected.vitals.push({date, temp: val, nurse:'Unit A', note: ''});
+  selected.docVisitedToday = selected.docVisitedToday || false;
+  refreshDetails();
+  renderList();
+});
+
+document.getElementById('markVisited').addEventListener('click', ()=>{
+  if(!selected) return alert('Select a patient');
+  selected.docVisitedToday = true;
+  if(!selected.doctorVisits) selected.doctorVisits=[];
+  selected.doctorVisits.push(new Date().toISOString().slice(0,10));
+  refreshDetails();
+  renderList();
+});
+
+document.getElementById('addNote').addEventListener('click', ()=>{
+  if(!selected) return alert('Select a patient');
+  const t = document.getElementById('noteInput').value.trim();
+  if(!t) return alert('Type a note');
+  if(!selected.notes) selected.notes=[];
+  selected.notes.push({date:new Date().toISOString().slice(0,10), text:t});
+  document.getElementById('noteInput').value='';
+  refreshDetails();
+});
+
+document.getElementById('attemptDischarge').addEventListener('click', ()=>{
+  if(!selected) return alert('Select a patient');
+  const free = computeFeverFree(selected);
+  if(free>=3){
+    selected.discharged = true;
+    document.getElementById('dischargeResult').innerText = 'Eligible — Doctor may inform admin for discharge.';
+    // mark bed free
+    document.getElementById('capacity').innerText = parseInt(document.getElementById('capacity').innerText)-1;
+    // remove from list view (simulate discharge)
+    const idx = patients.findIndex(x=>x.id===selected.id);
+    if(idx>=0) patients.splice(idx,1);
+    selected = null;
+    document.getElementById('detailUI').style.display='none';
+    document.getElementById('noSelect').style.display='block';
+    renderList();
+  } else {
+    document.getElementById('dischargeResult').innerText = 'Not eligible — patient has not completed 3 fever-free days.';
+  }
+});
+
+// initial render
+renderList();
+</script>
+</body>
+</html>
